@@ -20,3 +20,6 @@ def espera(segundos):
     """Espera `segundos` sin calcular nada: como pedirle algo a una API."""
     time.sleep(segundos)
     return segundos
+
+def foo():
+    print("Foo")
