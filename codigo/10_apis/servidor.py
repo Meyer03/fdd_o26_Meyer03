@@ -6,12 +6,18 @@ abierto: cada petición que llega se imprime completa, tal como viajó
 
     uv run python servidor.py
 
+Para medir (sección 10.2) la radiografía estorba: con FDD_SILENCIO=1 no
+imprime nada por petición.
+
+    FDD_SILENCIO=1 uv run python servidor.py
+
 Lo que expone (el contrato) está en GET /, en JSON.
 """
 import csv
 import hashlib
 import io
 import json
+import os
 import re
 import sys
 import time
@@ -22,6 +28,7 @@ from urllib.parse import parse_qs, urlsplit
 PUERTO = 8026
 TOKEN = "fdd-2026"          # el token que escribe (POST, PUT, DELETE)
 TOKEN_LECTOR = "lector"     # un token válido, pero sin permiso de escribir
+SILENCIO = os.environ.get("FDD_SILENCIO") == "1"   # sin radiografía, para medir
 
 INICIALES = [
     {"id": 1, "tienda": "Centro", "producto": "café", "cantidad": 3, "precio": 45.0},
@@ -77,6 +84,8 @@ def etag_de(cuerpo):
 
 
 def imprime(texto=""):
+    if SILENCIO:
+        return
     print(texto, file=sys.stderr, flush=True)
 
 
@@ -92,10 +101,12 @@ class Ventas(BaseHTTPRequestHandler):
     # ── entrada ───────────────────────────────────────────────────────────
     def leer(self):
         global peticiones
-        peticiones += 1
+        with candado:   # `+= 1` lee, suma y escribe: sin candado dos hilos pierden una cuenta
+            peticiones += 1
+            numero = peticiones
         largo = int(self.headers.get("Content-Length", 0))
         cuerpo = self.rfile.read(largo) if largo else b""
-        imprime(f"\n━━ petición #{peticiones} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        imprime(f"\n━━ petición #{numero} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         imprime(f"  {self.requestline}")
         for nombre, valor in self.headers.items():
             imprime(f"  {nombre}: {valor}")
@@ -267,7 +278,11 @@ class Ventas(BaseHTTPRequestHandler):
                    {"Allow": "GET, HEAD, PUT, DELETE"})
 
 
+class Servidor(ThreadingHTTPServer):
+    request_queue_size = 1024   # por omisión son 5: con 500 clientes a la vez, el resto se rechaza
+
+
 if __name__ == "__main__":
     reiniciar()
     imprime(f"Servidor de ventas en http://127.0.0.1:{PUERTO}  (Ctrl+C para apagarlo)")
-    ThreadingHTTPServer(("127.0.0.1", PUERTO), Ventas).serve_forever()
+    Servidor(("127.0.0.1", PUERTO), Ventas).serve_forever()

@@ -29,7 +29,7 @@ Students work only inside `estudiantes/<login>/`, copied from `codigo/` with the
 
 ## Testing Guidelines
 
-Add focused `tools/test_*.py` guards for editorial invariants and generated assets. Run the full suite before committing. For visual changes, also build and inspect desktop and mobile Chromium views. Edit SVG generators—not generated SVG output—when a generator is the source of truth. Every image requires alt text and a row in `_assets/CREDITOS.md`.
+Add focused `tools/test_*.py` guards for editorial invariants and generated assets. Run the full suite before committing. For visual changes, also build and inspect desktop and mobile Chromium views. Edit SVG generators—not generated SVG output—when a generator is the source of truth. Every image requires alt text and a row in `_assets/CREDITOS.md`. Section 10.2 has `tools/gen_computo.py` (figures prefixed `cmp-`, into `course/10_apis/_assets/`) and `tools/gen_notebook_computo.py` (generates `codigo/10_apis/computo.ipynb`), checked by `tools/test_computo_curriculum.py`; the calendar currently lists `session-01` through `session-17`, ending at 2026-10-27, and each session's `page` includes `computo-y-concurrencia`.
 
 ## Commit & Pull Request Guidelines
 

@@ -11,7 +11,6 @@ import re
 import threading
 import urllib.error
 import urllib.request
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -110,7 +109,7 @@ def servidor():
     mod = _modulo("servidor_apis", PLANTILLA / "servidor.py")
     mod.imprime = lambda *a, **k: None
     mod.reiniciar()
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), mod.Ventas)
+    srv = mod.Servidor(("127.0.0.1", 0), mod.Ventas)   # la misma clase que __main__
     hilo = threading.Thread(target=srv.serve_forever, daemon=True)
     hilo.start()
     yield f"http://127.0.0.1:{srv.server_address[1]}"
