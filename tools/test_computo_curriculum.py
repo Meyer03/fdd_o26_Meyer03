@@ -196,6 +196,7 @@ def test_el_proyecto_pide_httpx_y_numpy():
 
 @pytest.fixture
 def servidor(monkeypatch):
+    pytest.importorskip("requests", reason="CI instala sólo pytest, pillow y pyyaml")
     monkeypatch.setenv("FDD_SILENCIO", "1")
     mod = _modulo("servidor_computo", PLANTILLA / "servidor.py")
     assert mod.SILENCIO, "FDD_SILENCIO=1 no apaga la radiografía"
@@ -215,7 +216,6 @@ def servidor(monkeypatch):
 
 def test_celda_1_1_corre_contra_el_servidor(servidor, capsys):
     """1.1: una llamada con ?lento=0.2 y un bucle de 3 M; ~0.6 s, un núcleo."""
-    pytest.importorskip("requests", reason="CI instala sólo pytest, pillow y pyyaml")
     codigo = dict(_celdas_de("1_donde_pasa_el_tiempo.md"))["1.1"]
     exec(compile(codigo, "<celda 1.1>", "exec"), {"__name__": "__celda__"})
     salida = capsys.readouterr().out
