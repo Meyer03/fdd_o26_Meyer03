@@ -20,7 +20,8 @@ def calcula(n=N_POR_OMISION):
     """Suma los cuadrados de 0 a n - 1 con un bucle de Python puro.
 
     Es determinista (mismo n, mismo resultado) y todo su tiempo es CPU: el
-    bucle corre dentro del intérprete y no cede el GIL ni el event loop.
+    bucle corre dentro del intérprete. El bucle bloquea el event loop, pero el
+    intérprete permite que otros hilos adquieran el GIL.
     """
     suma = 0
     for i in range(n):

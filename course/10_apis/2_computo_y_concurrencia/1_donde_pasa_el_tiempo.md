@@ -54,7 +54,7 @@ FDD_SILENCIO=1 uv run python servidor.py
 
 ## Ejecuta y espera
 
-**Definición.** Una **tarea** es una unidad de trabajo con inicio y fin. Su duración se parte en dos tramos que no se traslapan: el que **ejecuta** (la CPU corre instrucciones) y el que **espera** (la tarea no puede avanzar hasta que algo de fuera responda). Hay un tercer estado que sólo aparece cuando varias tareas comparten una CPU: **lista**, la tarea ya podría ejecutar pero otra tiene la CPU y le toca esperar su turno. Los Gantt de las páginas siguientes lo dibujan aparte; la diferencia entre el reloj y el tiempo de CPU de abajo incluye también ese turno.
+**Definición.** Una **tarea** es una unidad de trabajo con inicio y fin. Su duración se parte en dos tramos que no se traslapan: el que ejecuta (la CPU corre instrucciones) y el que espera (la tarea no puede avanzar hasta que algo de fuera responda). Hay un tercer estado, **lista**: la tarea ya podría ejecutar, pero todas las CPU están ocupadas y le toca esperar su turno. Aparece con una CPU y también con varias, si hay más tareas que CPU. Los Gantt de las páginas siguientes lo dibujan aparte; la diferencia entre el reloj y el tiempo de CPU de abajo incluye también ese turno.
 
 Una llamada a una API tiene los dos: ejecutar es armar la petición y leer el JSON; esperar es el viaje por la red y el tiempo del servidor (la latencia de [[que-es-una-api]]).
 
@@ -133,8 +133,10 @@ Lo que pasa con 20 llamadas a `?lento=0.2` se lee en un Gantt: una barra por tar
 En el Gantt de arriba hay tres cosas que leer:
 
 - Cada tarea empieza hasta que termina la anterior: el tiempo total es la **suma** de las duraciones.
-- Los tramos que esperan son largos y los que ejecutan son astillas.
-- La fila de la CPU está vacía durante toda espera: la máquina **podía** hacer otra cosa y no hizo nada.
+- Los intervalos de espera duran mucho más que los de ejecución.
+- La fila de la CPU está vacía durante toda espera: esta tarea no la usó, y el programa no puso otro trabajo en ese hueco.
+
+Este Gantt es un esquema con tiempos ilustrativos, no la medición de abajo.
 
 **Haz (celda 1.2):** llama 20 veces seguidas y reparte el tiempo entre ejecutar y esperar.
 
@@ -161,7 +163,7 @@ print(f"sueño pedido al servidor: {N * 0.2:.1f} s")
 **Qué hace cada línea:**
 
 - `for _ in range(N)` — 20 vueltas; cada `requests.get` bloquea hasta recibir la respuesta, así que la siguiente no sale antes.
-- `reloj - cpu` — lo que no fue CPU de tu proceso: espera.
+- `reloj - cpu` — aproxima el tiempo en que el cliente no usó CPU: la espera bloqueada por la respuesta y, si la hubo, la espera de turno.
 - `N * 0.2` — lo que pidió el programa: 20 pausas de 0.2 s. El reloj no puede ser menor a eso.
 
 **Deberías ver:**

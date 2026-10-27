@@ -175,8 +175,9 @@ class Ventas(BaseHTTPRequestHandler):
         if self.ruta == "/":
             return self.responder(200, CONTRATO, tipo="application/json")
         if self.ruta == "/ventas":
-            filas = [v for v in ventas.values()
-                     if self.query.get("tienda") in (None, v.get("tienda"))]
+            with candado:   # otro hilo puede cambiar el dict mientras se recorre
+                filas = [v for v in ventas.values()
+                         if self.query.get("tienda") in (None, v.get("tienda"))]
             return self.con_etag(filas)
         if self.id_de_la_ruta() is not None:
             venta = ventas.get(self.id_de_la_ruta())
@@ -185,14 +186,19 @@ class Ventas(BaseHTTPRequestHandler):
             return self.con_etag(venta)
         if self.ruta == "/exportar":
             # Endpoint viejo: dice que es CSV pero no dice en qué codificación.
-            return self.responder(200, list(ventas.values()), tipo="text/csv")
+            with candado:
+                filas = list(ventas.values())
+            return self.responder(200, filas, tipo="text/csv")
         if self.ruta == "/panel":
+            with candado:
+                ids = list(ventas)
             enlaces = "\n".join(f'<a href="/borrar?id={i}">borrar venta {i}</a><br>'
-                                for i in ventas)
+                                for i in ids)
             return self.responder(200, f"<h1>Panel de ventas</h1>\n{enlaces}\n",
                                   tipo="text/html; charset=utf-8")
         if self.ruta == "/borrar":
-            ventas.pop(int(self.query.get("id", 0)), None)
+            with candado:
+                ventas.pop(int(self.query.get("id", 0)), None)
             return self.responder(200, {"ok": True})
         self.error(404, f"no existe {self.ruta}")
 
@@ -254,10 +260,11 @@ class Ventas(BaseHTTPRequestHandler):
             return self.error(400, "el body no es JSON válido")
         if not isinstance(nueva, dict):
             return self.error(400, "el body debe ser un objeto JSON")
-        with candado:
+        with candado:   # comprobar, escribir y copiar la respuesta sin que otro hilo se cuele
             existia = i in ventas
             ventas[i] = {**nueva, "id": i}
-        self.responder(200 if existia else 201, ventas[i])
+            guardada = dict(ventas[i])
+        self.responder(200 if existia else 201, guardada)
 
     def do_DELETE(self):
         self.leer()

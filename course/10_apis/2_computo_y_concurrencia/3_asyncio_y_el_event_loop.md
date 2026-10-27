@@ -20,9 +20,9 @@ La pregunta: **¿cómo espera 100 peticiones un solo hilo?** Los hilos ya solapa
 | Término | Definición de una línea | Lo ves en |
 |---|---|---|
 | **corrutina** | Función definida con `async def`; al llamarla no corre, devuelve un objeto que alguien tiene que esperar | celda 3.1 |
-| **`await`** | Pausa esta corrutina hasta que termine lo esperado y deja que el loop corra otras | celda 3.1 |
-| **tarea** | Corrutina ya programada en el loop, que avanza sin que la esperes | celda 3.2 |
-| **event loop** | El bucle de un hilo que guarda las corrutinas pendientes y, cada vez que una hace `await`, corre otra que ya puede avanzar | celda 3.2 |
+| **`await`** | Obtiene el resultado de lo esperado; cede el control al loop sólo si la operación se suspende | celda 3.1 |
+| **tarea** (`asyncio.Task`) | Corrutina ya programada en el loop, que avanza sin que la esperes | celda 3.2 |
+| **event loop** | El bucle de un hilo que guarda las corrutinas pendientes y, cuando la tarea actual se suspende o termina, corre otra que ya puede avanzar | celda 3.2 |
 
 ## Una corrutina no corre al llamarla
 
@@ -101,7 +101,7 @@ marca("las tres terminaron")
 - Todo ocurrió en un hilo. El loop corre A hasta su `await`, luego B, luego C, y vuelve a cada una cuando su espera acaba.
 
 ::: figure {#cmp-event-loop title="El event loop reparte un hilo entre corrutinas"}
-![Un solo hilo con el event loop en el centro. A la izquierda, tres corrutinas A, B y C hacen await y entregan el control al loop; el loop guarda las que esperan y, cuando una espera termina, la devuelve a la cola de listas y la corre hasta su siguiente await. Una línea de tiempo muestra que los tramos de ejecución son cortos y las esperas se solapan.](../_assets/cmp-event-loop.svg)
+![Un solo hilo con el event loop en el centro. A la izquierda, tres corrutinas A, B y C hacen await y entregan el control al loop; el loop guarda las que esperan y, cuando una espera termina, la devuelve a la cola de corrutinas listas para reanudarse y la corre hasta su siguiente await. Una línea de tiempo muestra que los tramos de ejecución son cortos y las esperas se solapan.](../_assets/cmp-event-loop.svg)
 :::
 
 ## Cien peticiones con un hilo: `gather` y `Semaphore`
@@ -138,7 +138,7 @@ for n in (20, 100, 500):
 - `asyncio.Semaphore(32)` — deja pasar como máximo 32 corrutinas a la vez por el bloque `async with sem`; las demás esperan su turno.
 - `httpx.Limits(max_connections=32)` — el mismo tope en el cliente: 32 conexiones abiertas.
 - `await cliente.get(...)` — la corrutina cede el hilo mientras el servidor duerme 0.2 s.
-- `asyncio.gather(*(...))` — programa las `n` corrutinas y devuelve sus resultados en orden.
+- `asyncio.gather(*(...))` — programa las `n` corrutinas y devuelve sus resultados en orden. Si una falla, por omisión propaga la primera excepción y no cancela las demás.
 
 **Deberías ver:**
 
@@ -164,13 +164,13 @@ Una comparación es honesta si los dos modelos tienen el mismo tope: aquí, 32 l
 | 100 | 20 s (calculado, no medido) | 0.82 s | 0.92 s |
 | 500 | 100 s (calculado, no medido) | 3.32 s | 3.41 s |
 
-Tiempos de la máquina del profesor; los tuyos cambian, la forma no. Con el mismo tope, hilos y `asyncio` tardan lo mismo: **el límite lo pone la concurrencia permitida, no el modelo.**
+Tiempos de la máquina del profesor; los tuyos cambian, la forma no. Con el mismo tope, hilos y `asyncio` tardan lo mismo: **el límite lo pone la concurrencia permitida, no el modelo.** También cambian la biblioteca HTTP y la reutilización de conexiones; son datos de una corrida, no una equivalencia general.
 
-Subir el tope es un parámetro. Con 500 llamadas y 100 en vuelo, los hilos tardan 1.52 s; `asyncio` con 100 conexiones de `httpx` tardó 10.91 s, **más lento que con 32** (una sola corrida, no repetida, sin celda en el notebook). El servidor no es la causa: el cliente gastó 10.9 s de CPU. El costo está en el **pool de conexiones** de `httpx` (las conexiones abiertas que el cliente guarda y reutiliza entre peticiones), no en el modelo; por eso se mide antes de subir un límite.
+Subir el tope es un parámetro. Con 500 llamadas y 100 en vuelo, los hilos tardan 1.52 s; `asyncio` con 100 conexiones de `httpx` tardó 10.91 s, **más lento que con 32** (una sola corrida, no repetida, sin celda en el notebook). El cliente consumió 10.9 s de CPU; sin perfil ni repeticiones no se puede asegurar la causa. La sospecha es el **pool de conexiones** de `httpx` (las conexiones abiertas que el cliente guarda y reutiliza entre peticiones). Por eso se mide antes de subir un límite.
 
 - Para **esperar**, 100 hilos o 1000 corrutinas es válido; la regla "no más workers que CPU" es de trabajo que calcula.
 - La diferencia práctica: una corrutina ocupa unos KB y cambia sin el sistema operativo; un hilo ocupa más y lo cambia el sistema. Con miles de esperas, eso decide.
-- `asyncio.to_thread(requests.get, ...)` **no es `asyncio` real**: son hilos: corre en el **executor** por omisión del loop (un pool de `min(32, CPUs + 4)` hilos que ejecuta funciones fuera del loop). Sirve para meter una librería que bloquea, pero no tiene las ventajas de la tabla.
+- `asyncio.to_thread(requests.get, ...)` integra una función bloqueante con `asyncio` usando el **executor** de hilos del loop (por omisión, un pool de `min(32, CPUs + 4)` hilos que ejecuta funciones fuera del loop). Mantiene libre el loop, con los costos y límites de ese pool.
 
 ## El contraejemplo: `await` uno tras otro
 
@@ -255,7 +255,7 @@ marca("las tres terminaron")
 
 Un `await` es el único punto donde el loop recupera el control. Un cálculo largo no tiene `await`: mientras corre, **ninguna otra corrutina avanza**, ni siquiera un temporizador.
 
-**Haz (celda 3.6):** un latido imprime cada 0.1 s; en medio, una corrutina calcula sin `await`.
+**Haz (celda 3.6):** `latido`, una corrutina que imprime cada 0.1 s; en medio, otra corrutina calcula sin `await`.
 
 ```python
 import asyncio
@@ -298,7 +298,7 @@ await asyncio.gather(latido(5), calculo())
 - No es lo que pasa con el GIL: el GIL le quita el turno a un hilo cada ~5 ms (`sys.getswitchinterval()`, ver [[el-gil]]). El loop es cooperativo: nadie interrumpe a una corrutina, y sólo recupera el control cuando ella llega a un `await`.
 
 ::: figure {#cmp-bloqueo-del-loop title="Un cálculo sin await detiene el loop"}
-![Diagrama de Gantt de 0 a 2200 ms: dos corrutinas lanzan una petición y esperan 200 ms; la corrutina 3 hace un cálculo de 2000 ms dentro del loop sin ningún await. Las respuestas llegan a los 220 y 240 ms, pero las corrutinas 1 y 2 quedan listas sin turno hasta los 2040 y 2060 ms, porque el loop no recupera el control hasta que el cálculo termina. Total 2080 ms en vez de 240.](../_assets/cmp-bloqueo-del-loop.svg)
+![Diagrama de Gantt de 0 a 2200 ms: dos corrutinas lanzan una petición y esperan 200 ms; la corrutina 3 hace un cálculo de 2000 ms dentro del loop sin ningún await. Las respuestas llegan a los 220 y 240 ms, pero las corrutinas 1 y 2 quedan listas sin turno hasta los 2040 y 2060 ms, porque el loop no recupera el control hasta que el cálculo termina. Total 2080 ms. Sin la corrutina de cálculo, ambas peticiones terminarían a los 260 ms.](../_assets/cmp-bloqueo-del-loop.svg)
 :::
 
 ## La salida: sacar el cálculo del loop
@@ -355,14 +355,14 @@ with ProcessPoolExecutor(max_workers=1) as pool:
 ```
 
 - Los latidos siguen saliendo cada 0.1 s mientras el cálculo corre en otro proceso; el loop no se enteró.
-- 2.39 s contra 2.28 s de la celda 3.6: la diferencia es arrancar el proceso, que el pool crea en el primer `run_in_executor` y queda dentro del cronómetro.
+- 2.39 s contra 2.28 s de la celda 3.6: los 2.39 s incluyen arrancar el proceso (el pool lo crea en el primer `run_in_executor`), enviarle la tarea y recibir el resultado; una corrida no permite atribuir toda la diferencia al arranque.
 
 **Al diseñar / al revisar código de IA, busca:**
 
 - `async def` con `await` dentro de un `for` sobre llamadas independientes: es secuencial con otra sintaxis; pide `asyncio.gather`.
 - `time.sleep(`, `requests.get(` o `open(...).read()` dentro de una `async def`: bloquea el loop y no lo parece.
-- `gather` sin `Semaphore` ni `Limits` sobre miles de llamadas: abre miles de conexiones a la vez y el servidor responde `429` o cierra.
+- `gather` sin `Semaphore` sobre miles de llamadas: lanza miles de corrutinas a la vez. `httpx` limita por omisión a 100 conexiones; un `Semaphore` limita las operaciones simultáneas, pero no las peticiones por segundo ni evita un `429`.
 - Un bucle de cálculo dentro de una `async def`: sácalo con `run_in_executor` y un proceso.
-- `asyncio.run(` dentro de una celda de notebook, o `asyncio.to_thread(requests.get, ...)` presentado como `asyncio`: lo segundo son hilos.
+- `asyncio.run(` dentro de una celda de notebook, o `asyncio.to_thread(requests.get, ...)` presentado como `asyncio` de un solo hilo: lo segundo corre en el pool de hilos del executor.
 
 Sigue con [[vectorizar]]: qué hacer cuando lo que tarda es el cálculo y no la espera.

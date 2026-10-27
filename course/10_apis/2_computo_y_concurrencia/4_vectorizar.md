@@ -27,13 +27,13 @@ Las páginas anteriores repartían **esperas**: hilos y `asyncio` ganan porque m
 
 ## En corto
 
-- **Vectorizar** no reparte el trabajo entre CPU: lo mueve de un bucle del intérprete a un bucle en C que corre sobre memoria contigua.
-- **La ganancia viene sobre todo de sacar el bucle de Python**; SIMD es un factor secundario.
+- **Vectorizar** no exige repartir el trabajo entre CPU: lo mueve de un bucle del intérprete a un bucle en C que recorre los valores crudos.
+- **La ganancia combina sacar el bucle de Python, tipos homogéneos y acceso a memoria**; la medición de abajo no separa cuánto es SIMD.
 - **Sólo sirve si la operación es la misma para todos los elementos**. Lógica distinta por elemento, objetos arbitrarios o datos que no caben en memoria quedan fuera.
 
 ## Qué guarda cada uno
 
-Una lista de Python guarda **referencias a objetos**: cada `float` es un objeto aparte con su cabecera, y para sumarlos el intérprete sigue cada referencia, revisa el tipo y despacha la operación. Un arreglo de NumPy guarda **los valores crudos, todos del mismo tipo, en un bloque contiguo**.
+Una lista de Python guarda **referencias a objetos**: cada `float` es un objeto aparte con su cabecera, y para sumarlos el intérprete sigue cada referencia, revisa el tipo y despacha la operación. Un arreglo de NumPy guarda **los valores crudos, todos del mismo `dtype`**; el que crea `np.arange` está en un bloque contiguo. Sus vistas (p. ej. `a[::2]`) pueden no ser contiguas y siguen admitiendo operaciones vectorizadas.
 
 **Haz (celda 4.1):** crea un arreglo de cinco millones de `float64` y mira qué ocupa; mide aparte lo que cuesta crearlo.
 
@@ -138,13 +138,13 @@ Son tiempos de la máquina del profesor; los tuyos cambian, y la proporción tam
 | **Tipos homogéneos** | No se revisa el tipo de cada elemento: se sabe una vez para todo el arreglo |
 | **Memoria contigua** | La CPU lee los datos en orden y la caché los tiene a mano |
 | **El bucle sale del intérprete** | Desaparecen el despacho por elemento, la referencia a objetos y el conteo de referencias |
-| **SIMD** | Una instrucción procesa varios valores a la vez; ayuda, pero es un factor **secundario** |
+| **SIMD** | Una instrucción procesa varios valores a la vez; esta medición no separa cuánto aporta |
 
-**La ganancia no se debe principalmente a SIMD.** Casi toda sale de quitar el costo por elemento del intérprete. SIMD sólo es posible porque los datos son homogéneos y contiguos, pero lo que lo prueba es la comparación de arriba, no el nombre de la instrucción.
+**Los 16x combinan sacar el bucle del intérprete, tipos homogéneos y acceso a memoria; esta medición no separa cuánto es SIMD.** Para atribuir una parte a cada cosa harían falta mediciones que cambien una sola a la vez.
 
 ## `float64`, no `int64`
 
-Un entero de NumPy tiene 64 bits y **no crece**: si el resultado no cabe, da la vuelta sin avisar. Un `int` de Python no tiene tope. La suma de cuadrados de 0 a 5 millones pasa de `9.2e18`, el máximo de `int64`.
+Un `np.int64` tiene 64 bits con signo y **no crece**: si el resultado no cabe, da la vuelta sin avisar. Un `int` de Python no tiene tope. La suma de cuadrados de 0 a 5 millones pasa de `9.2e18`, el máximo de `int64`.
 
 **Haz (celda 4.3):** suma los mismos cuadrados con `int64` y compara con el valor exacto.
 
@@ -238,15 +238,15 @@ S=0.25, de 4 a 8 unidades: 1.27 veces más
 ```
 
 ::: figure {#cmp-amdahl title="Speedup teórico de Amdahl según la fracción serial"}
-![Tres curvas del speedup teórico contra el número de unidades de cómputo, para fracciones seriales de 0.1, 0.25 y 0.5. Cada curva sube rápido con pocas unidades y se aplana hacia su techo, que es uno entre S: 10, 4 y 2 respectivamente. Una recta de referencia muestra el speedup ideal sin parte serial.](../_assets/cmp-amdahl.svg)
+![Tres curvas del speedup teórico contra el número de unidades de cómputo, para fracciones seriales de 0.1, 0.25 y 0.5. Cada curva sube rápido con pocas unidades y se aplana hacia su techo, que es uno entre S: 10, 4 y 2 respectivamente. Una recta de referencia muestra el speedup ideal sin parte serial. Modelo ideal: carga fija, fracción serial constante y sin costos adicionales.](../_assets/cmp-amdahl.svg)
 :::
 
-**Sólo limita de verdad al trabajo que calcula.** Al repartir esperas también hay parte serial (la CPU de cada tarea se turna bajo el GIL, como dibuja el Gantt de hilos), pero es pequeña: en la celda 1.2 fue 0.7 % del tiempo. Con `S` tan chico Amdahl casi no limita, y 100 hilos o 1000 corrutinas esperando a la vez son válidos mientras el servidor y el sistema aguanten. Y el `S` real incluye lo que no ves en el código: arrancar procesos, serializar datos de ida y vuelta, juntar resultados. Por eso el speedup medido queda por debajo de la curva.
+**Amdahl supone una carga fija y un reparto ideal.** `S` es la fracción del tiempo original que no mejora al repartir, incluida la E/S que no se puede solapar. El 0.7 % de CPU de la celda 1.2 no determina `S`. Arrancar procesos, transferir datos y recolectar resultados añaden costos que la fórmula no cuenta; por eso el speedup medido queda por debajo de la curva.
 
 ## Al diseñar / al revisar código de IA, busca…
 
 - **Un `for` de Python sobre un arreglo o una columna** para sumar, multiplicar o filtrar: casi siempre es una operación vectorizable.
-- **Hilos para acelerar un cálculo numérico**: el GIL lo impide; vectoriza o usa procesos.
+- **Hilos para acelerar un cálculo numérico**: el GIL impide acelerar bucles de Python con hilos. Muchas operaciones de NumPy lo liberan y BLAS puede usar hilos internos: controla los hilos por proceso para no sobreasignar las CPU.
 - **Acumuladores en `int64` o `int32` sobre sumas grandes**: desbordan sin aviso. Revisa el `dtype`.
 - **Una medición que incluye crear el arreglo o convertir la lista**, o que no descarta la primera corrida: infla o desinfla el speedup.
 - **Una promesa de «N veces más rápido con N procesos»** sin hablar de la fracción serial ni del costo de serializar.

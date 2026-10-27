@@ -313,8 +313,9 @@ def cmp_matriz_2x2():
         "tareas en curso a la vez. Secuencial cae en no concurrente y no "
         "paralelo. Hilos de Python con GIL y asyncio caen en concurrente y no "
         "paralelo. Procesos caen en concurrente y paralelo. La celda paralelo "
-        "sin concurrencia es una sola operacion repartida dentro de una "
-        "libreria compilada. Asincrono no es una celda: es como se escribe la "
+        "sin concurrencia es una sola operacion de la aplicacion repartida "
+        "dentro de una libreria compilada; sus subtareas internas si son "
+        "concurrentes, asi que es el caso limite. Asincrono no es una celda: es como se escribe la "
         "espera, con await."
     )
     p = [marco(ancho, alto, aria)]
@@ -334,8 +335,8 @@ def cmp_matriz_2x2():
     celdas = (
         (0, 0, SUAVE, "secuencial", ["un for con una llamada", "tras otra"]),
         (1, 0, VIOLETA, "una operación repartida",
-         ["dentro de una librería compilada", "(p. ej. NumPy multiplicando",
-          "matrices grandes); rara de escribir"]),
+         ["dentro de una librería compilada", "(p. ej. NumPy); sus subtareas",
+          "internas sí son concurrentes"]),
         (0, 1, CIAN, "hilos  ·  asyncio",
          ["varias esperas en curso,", "pero el GIL deja ejecutar", "Python a uno a la vez"]),
         (1, 1, ACENTO, "procesos",
@@ -452,7 +453,8 @@ def cmp_bloqueo_del_loop():
         "un calculo de 2000 ms dentro del loop sin ningun await. Las "
         "respuestas llegan en 220 y 240 ms, pero las corrutinas 1 y 2 quedan "
         "listas sin turno hasta 2040 y 2060 ms, porque el loop no recupera el "
-        "control hasta que el calculo termina. Total 2080 ms en vez de 240."
+        "control hasta que el calculo termina. Total 2080 ms. Sin la corrutina "
+        "de calculo, ambas peticiones terminarian a los 260 ms."
     )
     return _gantt(
         "Un cálculo de 2 s dentro del loop detiene a todas las demás",
@@ -532,8 +534,8 @@ def cmp_amdahl():
         "con P, de 0 a 16. Una diagonal punteada marca la aceleracion ideal "
         "igual a P. Tres curvas teoricas 1 entre S mas 1 menos S sobre P: con "
         "S igual a 0.1 llega a 6.4 en P 16 y su techo es 10; con S 0.25 llega "
-        "a 3.4 y su techo es 4; con S 0.5 llega a 1.9 y su techo es 2. Solo "
-        "aplica a trabajo que calcula."
+        "a 3.4 y su techo es 4; con S 0.5 llega a 1.9 y su techo es 2. Modelo "
+        "ideal: carga fija, fraccion serial constante y sin costos adicionales."
     )
     p = [marco(ancho, alto, aria)]
     p.append(texto(ancho / 2, 42, "Ley de Amdahl: la parte serial pone el techo",
@@ -583,7 +585,7 @@ def cmp_amdahl():
                        anclaje="start"))
 
     p.append(texto(ancho / 2, 620,
-                   "S = fracción serial del programa. Solo aplica a trabajo que calcula: esperar no se acelera con CPU.",
+                   "S = fracción serial. Modelo ideal: carga fija, fracción serial constante y sin costos adicionales.",
                    SUAVE, 13))
     p.append(cierre())
     return "".join(p)

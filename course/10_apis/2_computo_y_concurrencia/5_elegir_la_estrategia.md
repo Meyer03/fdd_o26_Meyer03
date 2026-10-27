@@ -37,7 +37,7 @@ Pregunta: dado un trabajo concreto, ¿qué uso, y cómo me doy cuenta de que ele
 |---|---|---|---|
 | **espera** (red, disco, base de datos) y son pocas esperas, con código bloqueante | hilos | Mientras un hilo espera, el GIL se libera y otro avanza | [[concurrente-paralelo-asincrono]] |
 | **espera** y son muchas, con librerías `async` | `asyncio` | Una corrutina que espera cuesta mucho menos que un hilo | [[asyncio-y-el-event-loop]] |
-| **calcula en Python** (un bucle que no cabe en un arreglo) | procesos | Cada proceso tiene su intérprete y su GIL: es el único paralelismo para código Python puro con GIL | [[concurrente-paralelo-asincrono]] |
+| **calcula en Python** (un bucle que no cabe en un arreglo) | procesos, si las tareas son independientes y compensan el arranque y la comunicación; si no, se queda secuencial | Cada proceso tiene su intérprete y su GIL; compara contra ejecución directa | [[concurrente-paralelo-asincrono]] |
 | **calcula sobre arreglos** numéricos | vectorizar | Saca el bucle del intérprete; no hay nada que repartir | [[vectorizar]] |
 | **mezcla** las dos cosas | combinar | Espera con `asyncio` o hilos y manda el cálculo a un pool de procesos | esta página |
 
@@ -59,7 +59,7 @@ Mismo servidor, mismo límite de concurrencia declarado (32), una sola corrida e
 
 - **Para esperar, hilos y `asyncio` quedan parejos** con el mismo límite de 32: elegir entre ellos es cuestión de librerías y de cuántas esperas, no de velocidad. Con el tope en 100 dejaron de estarlo (1.52 s contra 10.91 s en una sola corrida, ver [[asyncio-y-el-event-loop]]): un límite nuevo se vuelve a medir.
 - **Los procesos ganan en cálculo, no en espera**: lanzarlos para llamadas de red añade arranque y copia de datos sin ganar nada.
-- **Repartir tiene techo**: 4 procesos dieron 2.3 veces, no 4 (Amdahl, [[vectorizar]]). Los 16x de NumPy son sobre otra carga (5 M `float64`, no los 20 M enteros de `calcula()`), así que esas dos cifras no se comparan entre sí.
+- **Repartir tiene techo**: 4 procesos dieron 2.3 veces, no 4. El cociente 2.34/1.00 compara 1 y 4 procesos incluyendo su gestión; no identifica `S` (Amdahl, [[vectorizar]]). Los 16x de NumPy son sobre otra carga (5 M `float64`, no los 20 M enteros de `calcula()`), así que esas dos cifras no se comparan entre sí.
 
 ## Anti-patrones, con su comando
 
@@ -149,14 +149,14 @@ Un manejador que **calcula mucho** no se arregla con más hilos: se mueve el cá
 ## Cierre
 
 > [!NOTE]
-> **Si sólo recuerdas una cosa:** primero averigua si el trabajo espera o calcula; la estrategia es la que ataca ese tramo, y el anti-patrón es el código que la nombra sin ejecutarla.
+> **Si sólo recuerdas una cosa:** primero averigua si el trabajo espera o calcula; la estrategia es la que ataca ese tramo, y el anti-patrón es el código que la nombra sin ejecutarla. Compara cada cambio de estrategia con la versión secuencial usando los mismos datos.
 
 ### Al diseñar, y al revisar código de IA, busca...
 
 - **`for ...: await ...` sobre una lista de llamadas.** Si no hay `gather` ni tareas, es secuencial.
 - **`requests`, `time.sleep` o lectura de archivos dentro de `async def`.** Bloquea el loop de todos.
 - **Un `ThreadPoolExecutor` o `ProcessPoolExecutor` creado dentro de un bucle o de un manejador.** Sácalo y reutilízalo.
-- **Una `lambda` o función anidada enviada a procesos.** Moverla a un módulo.
+- **Una `lambda` o función anidada enviada a procesos.** Defínela en un módulo importable.
 - **`max_workers` fijado en un número grande para trabajo que calcula.** Compáralo con `os.cpu_count()`.
 - **Hilos para sumar o multiplicar números en un bucle.** El GIL los turna; vectoriza o usa procesos.
 

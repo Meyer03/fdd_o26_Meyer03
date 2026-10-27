@@ -127,7 +127,7 @@ después de await, terminó: True y devolvió 42
 
 ## Paralelo: ejecución en el mismo instante
 
-**Definición:** dos cosas son paralelas si **se ejecutan en el mismo instante**. Eso exige al menos 2 CPU lógicas, y en Python con GIL exige **procesos** (o la compilación *free-threaded* de 3.14, que ya vive en [[el-gil]]): cada uno trae su intérprete y su GIL.
+**Definición:** dos cosas son paralelas si **se ejecutan en el mismo instante**. Eso exige al menos 2 CPU lógicas, y en Python con GIL exige **procesos** (o la compilación *free-threaded* de 3.14, que ya vive en [[el-gil]]): cada uno trae su intérprete y su GIL. Hay dos excepciones: extensiones como NumPy liberan el GIL dentro de su código compilado y pueden calcular en paralelo, y CPython *free-threaded* lo desactiva (en 3.14 está soportado y es opcional).
 
 La función que calcula vive en `trabajo_computo.py`, un archivo importable: un proceso nuevo vuelve a importarla, y una celda no vive en ningún archivo (el porqué está en [[el-gil]]).
 
@@ -180,7 +180,7 @@ El Gantt de arriba dibuja tareas con espera, para mostrar el mecanismo; la celda
 Las dos primeras palabras forman una matriz de 2 × 2. La tercera no entra: asíncrono dice *cómo escribes* la espera, no *cuándo* ejecuta.
 
 ::: figure {#cmp-matriz-2x2 title="Concurrente por paralelo: dónde cae cada estrategia"}
-![Matriz de dos por dos. Columnas: no paralelo, una sola CPU ejecuta a la vez; paralelo, varias CPU ejecutan en el mismo instante. Filas: no concurrente, una tarea en curso a la vez; concurrente, varias tareas en curso a la vez. Secuencial cae en no concurrente y no paralelo. Hilos con GIL y asyncio caen en concurrente y no paralelo. Procesos caen en concurrente y paralelo. La celda paralelo y no concurrente la ocupa una sola operación repartida entre CPU dentro de una librería compilada, como NumPy.](../_assets/cmp-matriz-2x2.svg)
+![Matriz de dos por dos. Columnas: no paralelo, una sola CPU ejecuta a la vez; paralelo, varias CPU ejecutan en el mismo instante. Filas: no concurrente, una tarea en curso a la vez; concurrente, varias tareas en curso a la vez. Secuencial cae en no concurrente y no paralelo. Hilos con GIL y asyncio caen en concurrente y no paralelo. Procesos caen en concurrente y paralelo. La celda paralelo y no concurrente la ocupa una sola operación de la aplicación repartida dentro de una librería compilada, como NumPy; sus subtareas internas sí son concurrentes, así que es el caso límite. Asíncrono no es una celda: es cómo se escribe la espera, con await.](../_assets/cmp-matriz-2x2.svg)
 :::
 
 | Estrategia | Concurrente | Paralelo | Qué consigue en Python con GIL |
@@ -191,7 +191,7 @@ Las dos primeras palabras forman una matriz de 2 × 2. La tercera no entra: así
 | procesos | **sí** | **sí** | solapa esperas **y** reparte cálculo |
 
 - **Sí, hilos y `asyncio` son concurrentes y no paralelos**: la celda 2.1 ahorró tiempo sin que dos hilos ejecutaran Python a la vez.
-- **Paralelo sin concurrente sí existe**: *una* sola tarea repartida entre varias CPU, como una operación de NumPy sobre un arreglo grande dentro de una librería compilada (lo ves en [[vectorizar]]). Hay ejecución simultánea y no hay varias tareas en curso.
+- **Paralelo sin concurrente es el caso límite**: *una* sola operación de tu aplicación repartida entre varias CPU dentro de una librería compilada, como NumPy sobre un arreglo grande (ver [[vectorizar]]). Si cuentas las subtareas internas de la librería, esas sí son concurrentes. No es una estrategia que escribas en este curso.
 
 > [!NOTE]
 > «Más rápido» tiene dos causas distintas. Si el trabajo **espera**, basta con solapar (concurrente). Si **calcula**, sólo ayuda ejecutar a la vez (paralelo). Con la pregunta de la página anterior, ¿espera o calcula?, eliges la columna.
@@ -244,6 +244,7 @@ esperado 400,000, obtenido 190,207
 
 - **Esperado 400,000, obtenido 190,207.** Faltan sumas: dos hilos leyeron el mismo valor y escribieron el mismo resultado.
 - El programa **no truena ni avisa**. Da un número equivocado y distinto en cada corrida.
+- Obtener 400,000 en una corrida no demuestra que no haya carrera. Y `setswitchinterval` no garantiza la intercalación: el efecto depende de la implementación y la versión de Python.
 
 El arreglo es un **`Lock`**: sólo un hilo a la vez entra al bloque que lo usa, y los otros esperan su turno.
 
@@ -292,7 +293,7 @@ esperado 400,000, obtenido 400,000
 - **Esperado y obtenido coinciden.** El precio: mientras un hilo está dentro del `with`, los otros esperan, así que el trozo protegido se ejecuta en serie. Protege lo mínimo.
 
 > [!WARNING]
-> Con procesos no hay carrera sobre una variable, porque no comparten memoria; pero tampoco ven los cambios del otro. Cada proceso trabaja sobre su copia y el resultado se devuelve y se junta al final.
+> Los procesos no comparten variables ordinarias: cada uno trabaja sobre su copia, no ve los cambios del otro, y el resultado se devuelve y se junta al final. Si comparten memoria explícitamente o un recurso externo (un archivo, una base de datos), también pueden tener carreras.
 
 ## Al diseñar / al revisar código de IA, busca…
 
