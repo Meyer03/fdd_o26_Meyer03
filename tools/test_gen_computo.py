@@ -1,4 +1,4 @@
-"""Guardas del generador de diagramas de la unidad 10, seccion 10.2 (Computo y concurrencia).
+"""Guardas del generador de diagramas de la unidad 11 (Computo y concurrencia).
 
 Regenera antes de comparar: correr pytest certifica que lo comiteado coincide
 con lo que el generador produce hoy. Editar un SVG a mano falla aqui.
@@ -18,9 +18,9 @@ import yaml
 
 RAIZ = Path(__file__).resolve().parent.parent
 GENERADOR = RAIZ / "tools/gen_computo.py"
-ASSETS = RAIZ / "course/10_apis/_assets"
-# Las figuras se buscan en todo el arbol de la unidad: viven en sus secciones.
-UNIDAD = RAIZ / "course/10_apis"
+ASSETS = RAIZ / "course/11_computo_y_concurrencia/_assets"
+# Las figuras se buscan en todas las paginas de la unidad.
+UNIDAD = RAIZ / "course/11_computo_y_concurrencia"
 SKIN = RAIZ / "skins/fdd-eva.yaml"
 GANTT = ("cmp-gantt-secuencial", "cmp-gantt-hilos", "cmp-gantt-asyncio",
          "cmp-gantt-await-en-serie", "cmp-gantt-procesos")
@@ -135,16 +135,96 @@ def test_procesos_dibuja_dos_cpu():
     assert "CPU 1" in svg and "CPU 2" in svg
 
 
-def test_la_matriz_ubica_las_cuatro_estrategias():
-    svg = _svg("cmp-matriz-2x2")
-    for pedazo in ("secuencial", "hilos", "asyncio", "procesos",
-                   "paralelo", "concurrente", "await"):
+def test_la_lista_es_rayada_y_la_espera_contorno():
+    """Convencion de A_notacion: exec relleno, wait contorno, ready rayado."""
+    for nombre in GANTT + ("cmp-gantt-gather", "cmp-gantt-semaforo", "cmp-bloqueo-del-loop",
+                           "cmp-create-task"):
+        svg = _svg(nombre)
+        assert 'id="rayado"' in svg and 'fill="url(#rayado)"' in svg, nombre
+        assert 'stroke-dasharray="6 4"' in svg, f"{nombre}: la espera va en contorno"
+
+
+def test_las_figuras_retiradas_no_vuelven():
+    """La 2x2 concurrente x paralelo tenia una celda vacia por teorema."""
+    modulo = _cargar()
+    for nombre in ("cmp-matriz-2x2", "cmp-event-loop"):
+        assert nombre not in modulo.DIAGRAMAS, nombre
+        assert not (ASSETS / f"{nombre}.svg").exists(), nombre
+
+
+def test_los_totales_de_las_figuras_nuevas():
+    esperados = {"cmp-gantt-gather": 300, "cmp-gantt-semaforo": 780}
+    for nombre, total in esperados.items():
+        assert f"total {total} ms" in _svg(nombre), nombre
+
+
+def test_el_semaforo_nunca_deja_entrar_a_mas_de_k():
+    """La simulacion: nunca mas de k tareas entre su primer exec y su ultimo."""
+    modulo = _cargar()
+    filas, _, total = modulo._simula_semaforo()
+    assert len(filas) == modulo.SEM_N == 8 and modulo.SEM_K == 3
+    dentro = []
+    for _, tramos in filas:
+        ejecuta = [t for t in tramos if t[0] == "ejecuta"]
+        dentro.append((ejecuta[0][1], ejecuta[-1][2]))
+        # La vida se parte sin huecos: cada tramo empieza donde acabo el anterior.
+        for a, b in zip(tramos, tramos[1:]):
+            assert a[2] == b[1], tramos
+    for t in range(0, total, 5):
+        assert sum(ini <= t < fin for ini, fin in dentro) <= 3, t
+    svg = _svg("cmp-gantt-semaforo")
+    for pedazo in ("espera permiso", "espera la red", "Semaphore(3)", "⌈8/3⌉", "720 ms"):
+        assert pedazo in svg, pedazo
+    assert "#ffc857" in svg.lower() and "#6fd8e8" in svg.lower()
+
+
+def test_la_traza_del_event_loop():
+    svg = _svg("cmp-event-loop-ticks")
+    for pedazo in ("ejecutando", "cola de listas", "esperando", "select", "CPU (1 hilo)",
+                   "tick 0", "tick 5", "dA = 300, dB = 100, dC = 200 ms",
+                   "[rA, rB, rC]", ">310<", ">120<", ">230<", "320 ms"):
+        assert pedazo in svg, pedazo
+
+
+def test_create_task_contrasta_inerte_y_agendada():
+    svg = _svg("cmp-create-task")
+    for pedazo in ("c = f()", "asyncio.create_task(f())", "inerte", "never awaited",
+                   "aunque nadie haga await t"):
+        assert pedazo in svg, pedazo
+
+
+def test_estados_e_intervalos():
+    svg = _svg("cmp-estados-tarea")
+    for estado in ("nueva", "lista", "ejecutando", "esperando", "terminada",
+                   "ready", "exec", "wait"):
+        assert estado in svg, estado
+    svg = _svg("cmp-intervalos")
+    for pedazo in ("[0, 240)", "[240, 480)", "t = 240", "secuencial"):
+        assert pedazo in svg, pedazo
+
+
+def test_conjuntos_y_matriz_asincrono():
+    svg = _svg("cmp-conjuntos")
+    for pedazo in ("secuencial", "concurrente", "paralelo", "Paralelo ⇒ concurrente"):
+        assert pedazo in svg, pedazo
+    svg = _svg("cmp-matriz-asincrono")
+    for pedazo in ("bloqueante", "asíncrono", "secuencial", "hilos", "await en serie",
+                   "gather", "720 ms", "280 ms"):
+        assert pedazo in svg, pedazo
+
+
+def test_servidor_de_la_clase_y_flujo_del_semaforo():
+    svg = _svg("cmp-arq-servidor-clase")
+    for pedazo in ("ThreadingHTTPServer", "1024", "un hilo por conexión", "Lock()", "accept()"):
+        assert pedazo in svg, pedazo
+    svg = _svg("cmp-flujo-semaforo")
+    for pedazo in ("contador", "cola de espera", "k = 3", "async with sem"):
         assert pedazo in svg, pedazo
 
 
 def test_amdahl_dibuja_las_tres_fracciones_seriales():
     svg = _svg("cmp-amdahl")
-    for s in ("S = 0.1", "S = 0.25", "S = 0.5", ">16<"):
+    for s in ("f = 0.1", "f = 0.25", "f = 0.5", ">16<", "S(N)"):
         assert s in svg, s
 
 

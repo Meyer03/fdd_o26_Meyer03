@@ -6,7 +6,7 @@ abierto: cada petición que llega se imprime completa, tal como viajó
 
     uv run python servidor.py
 
-Para medir (sección 10.2) la radiografía estorba: con FDD_SILENCIO=1 no
+Para medir (unidad 11) la radiografía estorba: con FDD_SILENCIO=1 no
 imprime nada por petición.
 
     FDD_SILENCIO=1 uv run python servidor.py
@@ -20,6 +20,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Lock
@@ -50,6 +51,7 @@ CONTRATO = {
         "GET /panel": "una página HTML con enlaces",
         "GET /borrar?id={id}": "borra con GET (mal diseño, a propósito)",
         "POST /reiniciar": "regresa los datos al inicio",
+        "GET /quien": "tu puerto, el hilo que te atiende y cuántas peticiones lleva tu conexión",
     },
     "autenticacion": "header Authorization: Bearer <token>",
     "formatos": ["application/json", "text/csv"],
@@ -98,12 +100,17 @@ class Ventas(BaseHTTPRequestHandler):
     def log_message(self, *args):   # el log de siempre, lo reemplaza la radiografía
         pass
 
+    def setup(self):
+        super().setup()
+        self.n_en_conexion = 0   # un handler por conexión: con keep-alive cuenta sus peticiones
+
     # ── entrada ───────────────────────────────────────────────────────────
     def leer(self):
         global peticiones
         with candado:   # `+= 1` lee, suma y escribe: sin candado dos hilos pierden una cuenta
             peticiones += 1
             numero = peticiones
+        self.n_en_conexion += 1
         largo = int(self.headers.get("Content-Length", 0))
         cuerpo = self.rfile.read(largo) if largo else b""
         imprime(f"\n━━ petición #{numero} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -196,6 +203,10 @@ class Ventas(BaseHTTPRequestHandler):
                                 for i in ids)
             return self.responder(200, f"<h1>Panel de ventas</h1>\n{enlaces}\n",
                                   tipo="text/html; charset=utf-8")
+        if self.ruta == "/quien":
+            return self.responder(200, {"puerto": self.client_address[1],
+                                        "hilo": threading.current_thread().name,
+                                        "peticion_en_conexion": self.n_en_conexion})
         if self.ruta == "/borrar":
             with candado:
                 ventas.pop(int(self.query.get("id", 0)), None)
